@@ -1498,6 +1498,42 @@ ssh_string ssh_sign_session_id(ssh_session session, ssh_private_key privatekey) 
   return signature;
 }
 
+ssh_private_key privatekey_dup(ssh_private_key key) {
+  ssh_private_key *copy = (ssh_private_key *) malloc(sizeof(ssh_private_key));
+  (*copy)->type = key->type;
+  
+#ifdef HAVE_LIBGCRYPT
+  #error not sure what a gcry_sexp is
+#elif defined HAVE_LIBCRYPTO
+  if (key->dsa_priv) {
+    (*copy)->dsa_priv = DSA_new();
+    (*copy)->dsa_priv->p = BN_dup(key->dsa_priv->p);
+    (*copy)->dsa_priv->q = BN_dup(key->dsa_priv->q);
+    (*copy)->dsa_priv->g = BN_dup(key->dsa_priv->g);
+    (*copy)->dsa_priv->pub_key = BN_dup(key->dsa_priv->pub_key);
+    (*copy)->dsa_priv->priv_key = BN_dup(key->dsa_priv->pub_key);
+    
+    if (key->dsa_priv->p == NULL ||
+      key->dsa_priv->q == NULL ||
+      key->dsa_priv->g == NULL ||
+      key->dsa_priv->pub_key == NULL
+    ) { return NULL; }
+  }
+  
+  if (key->rsa_priv) {
+    (*copy)->rsa_priv = RSA_new();
+    (*copy)->rsa_priv->e = BN_dup(key->rsa_priv->e);
+    (*copy)->rsa_priv->n = BN_dup(key->rsa_priv->n);
+    
+    if (key->rsa_priv->e == NULL || key->rsa_priv->n == NULL) {
+      return NULL;
+    }
+  }
+#endif
+  
+  return *copy;
+}
+
 /** @} */
 
 /* vim: set ts=4 sw=4 et cindent: */

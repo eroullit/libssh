@@ -38,6 +38,7 @@
 #include "libssh/buffer.h"
 #include "libssh/socket.h"
 #include "libssh/session.h"
+#include "libssh/keys.h"
 
 /**
  * @addtogroup libssh_server
@@ -375,8 +376,8 @@ int ssh_bind_accept(ssh_bind sshbind, ssh_session session) {
   }
   ssh_socket_set_fd(session->socket, fd);
   ssh_socket_get_poll_handle_out(session->socket);
-  session->dsa_key = sshbind->dsa;
-  session->rsa_key = sshbind->rsa;
+  session->dsa_key = privatekey_dup(sshbind->dsa);
+  session->rsa_key = privatekey_dup(sshbind->rsa);
 
 return SSH_OK;
 }
