@@ -159,9 +159,36 @@ int ssh_bind_listen(ssh_bind sshbind) {
   const char *host;
   socket_t fd;
 
+  sshbind->dsa = NULL;
+  sshbind->rsa = NULL;
+
   if (ssh_init() < 0) {
     ssh_set_error(sshbind, SSH_FATAL, "ssh_init() failed");
     return -1;
+  }
+
+  if (sshbind->dsakey) {
+    if (sshbind->dsakey == NULL && sshbind->rsakey == NULL) {
+      ssh_set_error(sshbind, SSH_FATAL,
+        "DSA or RSA host key file must be set before listen()");
+      return SSH_ERROR;
+    }
+    sshbind->dsa = _privatekey_from_file(
+      sshbind, sshbind->dsakey, SSH_KEYTYPE_DSS
+    );
+    if (sshbind->dsa == NULL) {
+      return -1;
+    }
+  }
+
+  if (sshbind->rsakey) {
+    sshbind->rsa = _privatekey_from_file(
+      sshbind, sshbind->rsakey, SSH_KEYTYPE_RSA
+    );
+    if (sshbind->rsa == NULL) {
+      privatekey_free(sshbind->dsa);
+      return -1;
+    }
   }
 
   host = sshbind->bindaddr;
@@ -171,6 +198,8 @@ int ssh_bind_listen(ssh_bind sshbind) {
 
   fd = bind_socket(sshbind, host, sshbind->bindport);
   if (fd == SSH_INVALID_SOCKET) {
+    privatekey_free(sshbind->dsa);
+    privatekey_free(sshbind->rsa);
     return -1;
   }
   sshbind->bindfd = fd;
@@ -180,6 +209,8 @@ int ssh_bind_listen(ssh_bind sshbind) {
         "Listening to socket %d: %s",
         fd, strerror(errno));
     close(fd);
+    privatekey_free(sshbind->dsa);
+    privatekey_free(sshbind->rsa);
     return -1;
   }
 
@@ -274,6 +305,8 @@ void ssh_bind_free(ssh_bind sshbind){
   SAFE_FREE(sshbind->banner);
   SAFE_FREE(sshbind->dsakey);
   SAFE_FREE(sshbind->rsakey);
+  SAFE_FREE(sshbind->dsa);
+  SAFE_FREE(sshbind->rsa);
   SAFE_FREE(sshbind->bindaddr);
 
   for (i = 0; i < 10; i++) {
@@ -287,8 +320,6 @@ void ssh_bind_free(ssh_bind sshbind){
 
 
 int ssh_bind_accept(ssh_bind sshbind, ssh_session session) {
-  ssh_private_key dsa = NULL;
-  ssh_private_key rsa = NULL;
   socket_t fd = SSH_INVALID_SOCKET;
   int i;
 
@@ -301,34 +332,12 @@ int ssh_bind_accept(ssh_bind sshbind, ssh_session session) {
   	ssh_set_error(sshbind, SSH_FATAL,"session is null");
   	return SSH_ERROR;
   }
-  if (sshbind->dsakey == NULL && sshbind->rsakey == NULL) {
-    ssh_set_error(sshbind, SSH_FATAL,
-        "DSA or RSA host key file must be set before accept()");
-    return SSH_ERROR;
-  }
-
-  if (sshbind->dsakey) {
-    dsa = _privatekey_from_file(sshbind, sshbind->dsakey, SSH_KEYTYPE_DSS);
-    if (dsa == NULL) {
-      return SSH_ERROR;
-    }
-  }
-
-  if (sshbind->rsakey) {
-    rsa = _privatekey_from_file(sshbind, sshbind->rsakey, SSH_KEYTYPE_RSA);
-    if (rsa == NULL) {
-      privatekey_free(dsa);
-      return SSH_ERROR;
-    }
-  }
 
   fd = accept(sshbind->bindfd, NULL, NULL);
   if (fd == SSH_INVALID_SOCKET) {
     ssh_set_error(sshbind, SSH_FATAL,
         "Accepting a new connection: %s",
         strerror(errno));
-    privatekey_free(dsa);
-    privatekey_free(rsa);
     return SSH_ERROR;
   }
 
@@ -340,8 +349,6 @@ int ssh_bind_accept(ssh_bind sshbind, ssh_session session) {
     if (sshbind->wanted_methods[i]) {
       session->wanted_methods[i] = strdup(sshbind->wanted_methods[i]);
       if (session->wanted_methods[i] == NULL) {
-        privatekey_free(dsa);
-        privatekey_free(rsa);
         return SSH_ERROR;
       }
     }
@@ -353,8 +360,6 @@ int ssh_bind_accept(ssh_bind sshbind, ssh_session session) {
     SAFE_FREE(session->bindaddr);
     session->bindaddr = strdup(sshbind->bindaddr);
     if (session->bindaddr == NULL) {
-      privatekey_free(dsa);
-      privatekey_free(rsa);
       return SSH_ERROR;
     }
   }
@@ -366,14 +371,12 @@ int ssh_bind_accept(ssh_bind sshbind, ssh_session session) {
   if (session->socket == NULL) {
     /* perhaps it may be better to copy the error from session to sshbind */
     ssh_set_error_oom(sshbind);
-    privatekey_free(dsa);
-    privatekey_free(rsa);
     return SSH_ERROR;
   }
   ssh_socket_set_fd(session->socket, fd);
   ssh_socket_get_poll_handle_out(session->socket);
-  session->dsa_key = dsa;
-  session->rsa_key = rsa;
+  session->dsa_key = sshbind->dsa;
+  session->rsa_key = sshbind->rsa;
 
 return SSH_OK;
 }
