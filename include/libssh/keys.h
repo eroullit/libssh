@@ -81,4 +81,6 @@ ssh_string ssh_do_sign(ssh_session session,ssh_buffer sigbuf,
 ssh_string ssh_sign_session_id(ssh_session session, ssh_private_key privatekey);
 ssh_string ssh_encrypt_rsa1(ssh_session session, ssh_string data, ssh_public_key key);
 
+ssh_private_key privatekey_dup(ssh_private_key);
+
 #endif /* KEYS_H_ */

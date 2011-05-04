@@ -1498,6 +1498,32 @@ ssh_string ssh_sign_session_id(ssh_session session, ssh_private_key privatekey) 
   return signature;
 }
 
+ssh_private_key privatekey_dup(ssh_private_key key) {
+  ssh_private_key copy = (ssh_private_key) malloc(
+    sizeof(ssh_private_key)
+  );
+  copy->dsa_priv = NULL;
+  copy->rsa_priv = NULL;
+  copy->type = key->type;
+  
+#ifdef HAVE_LIBGCRYPT
+  #error not sure what a gcry_sexp is
+#elif defined HAVE_LIBCRYPTO
+  switch (key->type) {
+    case SSH_KEYTYPE_DSS :
+      copy->dsa_priv = DSAparams_dup(key->dsa_priv);
+      if (copy->dsa_priv == NULL) return NULL;
+      break;
+    case SSH_KEYTYPE_RSA :
+    case SSH_KEYTYPE_RSA1 :
+      copy->rsa_priv = RSAPrivateKey_dup(key->rsa_priv);
+      if (copy->rsa_priv == NULL) return NULL;
+  }
+#endif
+  
+  return copy;
+}
+
 /** @} */
 
 /* vim: set ts=4 sw=4 et cindent: */
